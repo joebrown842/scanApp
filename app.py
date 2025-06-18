@@ -19,11 +19,17 @@ def _default():
 def presets_load():
     if PRESET_PATH.exists():
         try:
-            return json.loads(PRESET_PATH.read_text())
+            data = json.loads(PRESET_PATH.read_text())
+            if "projects" not in data or not isinstance(data["projects"], dict):
+                raise ValueError("Invalid format")
+            return data
         except Exception:
-            pass
-    PRESET_PATH.write_text(json.dumps(_default(), indent=2))
-    return _default()
+            st.warning("⚠️ presets.json was missing or corrupt. Recreated clean file.")
+            PRESET_PATH.write_text(json.dumps(_default(), indent=2))
+            return _default()
+    else:
+        PRESET_PATH.write_text(json.dumps(_default(), indent=2))
+        return _default()
 
 def presets_save(data): PRESET_PATH.write_text(json.dumps(data, indent=2))
 
