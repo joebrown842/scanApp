@@ -151,11 +151,9 @@ with tab_proc:
 with tab_preset:
     st.subheader("📁 Projects")
 
-    if not presets["projects"]:
-        st.info("No projects found. Start by creating one below.")
-
+    # Always show project creation form
     st.markdown("### ➕ Create New Project")
-    new_proj = st.text_input("Project Name")
+    new_proj = st.text_input("Project Name", key="create_project")
     if st.button("➕ Add Project"):
         if not new_proj:
             st.warning("Please enter a project name.")
@@ -164,13 +162,13 @@ with tab_preset:
         else:
             presets["projects"][new_proj] = {"personnel": [], "presets": {}}
             presets_save(presets)
-            st.success("Project created."); st.experimental_rerun()
+            st.success("Project created.")
+            st.experimental_rerun()
 
     if not presets["projects"]:
         st.stop()
 
-    proj_names = sorted(presets["projects"].keys())
-    proj = st.selectbox("Manage project", proj_names)
+    proj = st.selectbox("Manage project", sorted(presets["projects"].keys()))
     proj_data = presets["projects"][proj]
 
     # ─── Manage Personnel ───
@@ -183,7 +181,8 @@ with tab_preset:
         if st.button("Add Person"):
             if p_new and p_new not in proj_data["personnel"]:
                 proj_data["personnel"].append(p_new)
-                presets_save(presets); st.experimental_rerun()
+                presets_save(presets)
+                st.experimental_rerun()
 
     st.divider()
 
@@ -205,13 +204,15 @@ with tab_preset:
         b = st.text_input("Building")
         c = st.text_input("Category")
         loc = st.text_input("Site Location")
-        ph  = st.text_input("Phone Number")
+        ph = st.text_input("Phone Number")
         if st.form_submit_button("💾 Save Preset"):
             if not all([b, c, loc, ph]):
                 st.warning("Please fill out all fields.")
             else:
                 proj_data["presets"].setdefault(b, {})[c] = {
-                    "location": loc, "phone": ph
+                    "location": loc,
+                    "phone": ph
                 }
                 presets_save(presets)
-                st.success("Preset saved."); st.experimental_rerun()
+                st.success("Preset saved.")
+                st.experimental_rerun()
