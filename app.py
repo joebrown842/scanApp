@@ -151,25 +151,23 @@ with tab_proc:
 with tab_preset:
     st.subheader("📁 Projects")
 
-    # Prompt to add project if none exist
     if not presets["projects"]:
-        st.info("No projects found. Add one to begin.")
-        new_proj = st.text_input("New project name")
-        if st.button("➕ Add Project") and new_proj:
-            presets["projects"][new_proj] = {"personnel": [], "presets": {}}
-            presets_save(presets)
-            st.success("Project created."); st.experimental_rerun()
-        st.stop()
+        st.info("No projects found. Start by creating one below.")
 
-    # Add new project if at least one exists
-    new_proj = st.text_input("Create new project")
-    if st.button("➕ Add Project") and new_proj:
-        if new_proj in presets["projects"]:
+    st.markdown("### ➕ Create New Project")
+    new_proj = st.text_input("Project Name")
+    if st.button("➕ Add Project"):
+        if not new_proj:
+            st.warning("Please enter a project name.")
+        elif new_proj in presets["projects"]:
             st.warning("Project already exists.")
         else:
             presets["projects"][new_proj] = {"personnel": [], "presets": {}}
             presets_save(presets)
-            st.success("Project added."); st.experimental_rerun()
+            st.success("Project created."); st.experimental_rerun()
+
+    if not presets["projects"]:
+        st.stop()
 
     proj_names = sorted(presets["projects"].keys())
     proj = st.selectbox("Manage project", proj_names)
