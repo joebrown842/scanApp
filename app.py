@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 import streamlit as st, json, re, datetime, tempfile
 from pathlib import Path
 import pytesseract, pdf2image
@@ -7,7 +6,7 @@ from PIL import Image
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side
 
-# ──────────────────────────────── Preset storage ──
+# ──────────────── Preset storage ────────────────
 PRESET_PATH = Path("presets.json")
 BORDER = Border(
     top=Side(style="thin"), bottom=Side(style="thin"),
@@ -30,7 +29,7 @@ def presets_save(data): PRESET_PATH.write_text(json.dumps(data, indent=2))
 
 presets = presets_load()
 
-# ──────────────────────────────── OCR helpers ──
+# ──────────────── OCR helpers ────────────────
 def ocr_crop(pg: Image.Image, box):
     gray = pg.crop(box).convert("L")
     bw = gray.point(lambda x: 0 if x < 180 else 255, "1")
@@ -41,7 +40,7 @@ def clean(t: str):
     return re.sub(r"\s{2,}", " ", t).strip(" :")
 
 def extract(lines):
-    out, i = 0, 0
+    out, i = [], 0
     while i < len(lines):
         m = re.match(r"^(\d+)\s+(.*)", lines[i])
         if m:
@@ -54,7 +53,7 @@ def extract(lines):
         i += 1
     return out
 
-# ──────────────────────────────── Excel Writer ──
+# ──────────────── Excel Writer ────────────────
 def fill_wb(template, out, items, meta):
     wb = load_workbook(template); ws = wb.active
     hdr = {
@@ -73,7 +72,7 @@ def fill_wb(template, out, items, meta):
         r += 1
     wb.save(out)
 
-# ──────────────────────────────── Streamlit UI ──
+# ──────────────── Streamlit UI ────────────────
 st.set_page_config(page_title="PDF → Excel Loader", layout="wide")
 st.title("📑 PDF Shipping-Sheet → Excel Loader")
 
@@ -82,24 +81,25 @@ tab_proc, tab_preset = st.tabs(["🚚 Process PDF", "🔧 Preset Manager"])
 # ============ TAB 1: PROCESS PDF ============ #
 with tab_proc:
     if not presets["projects"]:
-        st.info("Add a project in *Preset Manager* tab first."); st.stop()
+        st.info("No projects found. Please add one in the *Preset Manager* tab.")
+        st.stop()
 
     proj = st.selectbox("Project", sorted(presets["projects"].keys()))
     ppl  = presets["projects"][proj]["personnel"]
     if not ppl:
-        st.warning("Add personnel to project in Preset Manager.")
+        st.warning("Add personnel to this project in Preset Manager.")
         st.stop()
     person = st.selectbox("Report Prepared By", ppl)
 
     bldg_opts = sorted(presets["projects"][proj]["presets"].keys())
     if not bldg_opts:
-        st.warning("No building presets in project. Add some in Preset Manager.")
+        st.warning("No building presets in project. Add in Preset Manager.")
         st.stop()
     bldg = st.selectbox("Building", bldg_opts)
 
     cat_opts = sorted(presets["projects"][proj]["presets"][bldg].keys())
     if not cat_opts:
-        st.warning("No categories under building. Add in Preset Manager.")
+        st.warning("No categories under selected building.")
         st.stop()
     cat = st.selectbox("Category", cat_opts)
 
@@ -144,6 +144,18 @@ with tab_proc:
 # ============ TAB 2: PRESET MANAGER ============ #
 with tab_preset:
     st.subheader("📁 Projects")
+
+    # Prompt to add project if none exist
+    if not presets["projects"]:
+        st.info("No projects found. Add one to begin.")
+        new_proj = st.text_input("New project name")
+        if st.button("➕ Add Project") and new_proj:
+            presets["projects"][new_proj] = {"personnel": [], "presets": {}}
+            presets_save(presets)
+            st.success("Project created."); st.experimental_rerun()
+        st.stop()
+
+    # Add new project if at least one exists
     new_proj = st.text_input("Create new project")
     if st.button("➕ Add Project") and new_proj:
         if new_proj in presets["projects"]:
@@ -154,12 +166,10 @@ with tab_preset:
             st.success("Project added."); st.experimental_rerun()
 
     proj_names = sorted(presets["projects"].keys())
-    if not proj_names:
-        st.stop()
     proj = st.selectbox("Manage project", proj_names)
     proj_data = presets["projects"][proj]
 
-    # ─── Manage Personnel ──
+    # ─── Manage Personnel ───
     st.markdown("### 👤 Project Personnel")
     col1, col2 = st.columns([2, 1])
     with col1:
@@ -173,7 +183,7 @@ with tab_preset:
 
     st.divider()
 
-    # ─── Show existing presets ──
+    # ─── Existing presets ───
     st.markdown("### 🏗️ Existing Building/Category Presets")
     rows = []
     for b, cats in proj_data["presets"].items():
@@ -185,7 +195,7 @@ with tab_preset:
 
     st.divider()
 
-    # ─── Add new preset ──
+    # ─── Add new preset ───
     st.markdown("### ➕ Add or Update a Preset")
     with st.form("add_preset"):
         b = st.text_input("Building")
