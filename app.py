@@ -134,7 +134,7 @@ with tab_proc:
                                     "project": proj,
                                     "location": preset["location"],
                                     "phone": preset["phone"],
-                                    "site_contact": person,
+                                    "site_contact": preset.get("contact", person),
                                     "building": bldg,
                                     "category": cat,
                                 }
@@ -161,7 +161,7 @@ with tab_preset:
             presets["projects"][new_proj] = {"personnel": [], "presets": {}}
             presets_save(presets)
             st.success(f"✅ Project '{new_proj}' created.")
-            st.experimental_rerun()
+            st.rerun()
 
     if presets["projects"]:
         st.divider()
@@ -179,7 +179,7 @@ with tab_preset:
                 if p_new and p_new not in proj_data["personnel"]:
                     proj_data["personnel"].append(p_new)
                     presets_save(presets)
-                    st.experimental_rerun()
+                    st.rerun()
 
         st.divider()
 
@@ -188,9 +188,9 @@ with tab_preset:
         rows = []
         for b, cats in proj_data["presets"].items():
             for c, d in cats.items():
-                rows.append([b, c, d["location"], d["phone"]])
+                rows.append([b, c, d.get("location", ""), d.get("phone", ""), d.get("contact", "")])
         st.dataframe(rows, hide_index=True,
-                     column_config={0:"Building",1:"Category",2:"Location",3:"Phone"},
+                     column_config={0:"Building",1:"Category",2:"Location",3:"Phone",4:"Site Contact"},
                      use_container_width=True)
 
         st.divider()
@@ -202,13 +202,16 @@ with tab_preset:
             c = st.text_input("Category")
             loc = st.text_input("Site Location")
             ph = st.text_input("Phone Number")
+            contact = st.text_input("Site Contact Name")
             if st.form_submit_button("💾 Save Preset"):
-                if not all([b, c, loc, ph]):
+                if not all([b, c, loc, ph, contact]):
                     st.warning("Please fill out all fields.")
                 else:
                     proj_data["presets"].setdefault(b, {})[c] = {
-                        "location": loc, "phone": ph
+                        "location": loc,
+                        "phone": ph,
+                        "contact": contact
                     }
                     presets_save(presets)
                     st.success("Preset saved.")
-                    st.experimental_rerun()
+                    st.rerun()
