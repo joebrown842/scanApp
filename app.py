@@ -17,10 +17,10 @@ DEFAULT_PRESETS = {"names": ["Joe Brown"],
                    "buildings": ["BLDG-1"],
                    "categories": ["Lighting"],
                    # project meta that seldom changes
-                   "project":  ["Temu Data Center"],
+                   "project":  "Temu Data Center",
                    "location": "32 Chase Way · Cedar Park TX 78613",
                    "delivery_date": str(datetime.date.today()),
-                   "phone": “(999) 888-7777”
+                   "phone": "(999) 888-7777"
                    }
 
 BORDER = Border(top=Side(style="thin", color="000000"),
