@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
+# PDF-to-Excel Shipping Sheet App
 import json, re, datetime, tempfile
 from pathlib import Path
-
 import streamlit as st
 from PIL import Image
 import pytesseract
@@ -9,33 +9,26 @@ import pdf2image
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side
 
-# ─────────────────────────────── Storage helpers ──────────────────────────────
+# ───── Data Setup ─────
 PRESET_PATH = Path("presets.json")
-
-def _default_struct():
-    """Initial empty structure."""
-    return {"projects": {}}
-
-def load_presets() -> dict:
-    if PRESET_PATH.exists():
-        try:
-            data = json.loads(PRESET_PATH.read_text())
-            if "projects" in data and isinstance(data["projects"], dict):
-                return data
-        except Exception:
-            pass
-    # fall-back (missing or corrupt)
-    PRESET_PATH.write_text(json.dumps(_default_struct(), indent=2))
-    return _default_struct()
-
-def save_presets(d: dict):
-    PRESET_PATH.write_text(json.dumps(d, indent=2))
-
-presets = load_presets()
-
-# ─────────────────────────────── OCR & Excel helpers ──────────────────────────
 BORDER = Border(*(Side(style="thin") for _ in range(4)))
 
+def _default_struct():
+    return {"projects": {}}
+
+def load_presets():
+    if not PRESET_PATH.exists():
+        PRESET_PATH.write_text(json.dumps(_default_struct(), indent=2))
+    try:
+        return json.loads(PRESET_PATH.read_text())
+    except:
+        PRESET_PATH.write_text(json.dumps(_default_struct(), indent=2))
+        return _default_struct()
+
+def save_presets(data): PRESET_PATH.write_text(json.dumps(data, indent=2))
+presets = load_presets()
+
+# ───── OCR & Excel Helpers ─────
 def ocr_text(img: Image.Image, box):
     gray = img.crop(box).convert("L")
     bw = gray.point(lambda x: 0 if x < 180 else 255, "1")
@@ -51,8 +44,7 @@ def clean_line(t: str):
     return re.sub(r"\s{2,}", " ", t)
 
 def extract_items(lines):
-    """Return [(desc, qty)] with LOT/TYPE."""
-    out, i = [], 0
+    out, i = 0, 0
     while i < len(lines):
         m = re.match(r"^(\d+)\s+(.*)", lines[i])
         if m:
@@ -85,26 +77,25 @@ def fill_workbook(tmpl, out, items, meta):
         r += 1
     wb.save(out)
 
-# ─────────────────────────────── Streamlit config ─────────────────────────────
-st.set_page_config(page_title="PDF-to-Excel Loader", layout="wide")
+# ───── Streamlit Setup ─────
+st.set_page_config(page_title="Shipping Sheet Loader", layout="wide")
 st.title("📑 PDF Shipping-Sheet ➜ Excel Loader")
-
 tab_proc, tab_mgr = st.tabs(["🚚 Process PDF", "🛠️ Preset Manager"])
 
-# ═══════════════════════ 1. Process PDF ═══════════════════════════════════════
+# ════════════════════════ Process Tab ════════════════════════
 with tab_proc:
     if not presets["projects"]:
-        st.info("Add a project first in **Preset Manager**.")
+        st.warning("Create a project first in the Preset Manager.")
     else:
         proj = st.selectbox("Project", list(presets["projects"]))
         ppl = presets["projects"][proj]["personnel"]
         if not ppl:
-            st.warning("Add personnel in Preset Manager.")
+            st.warning("Add personnel to this project.")
         else:
             person = st.selectbox("Prepared By", ppl)
             pres_tree = presets["projects"][proj]["presets"]
             if not pres_tree:
-                st.warning("Add a preset in Preset Manager.")
+                st.warning("Add a preset for this project.")
             else:
                 bldg = st.selectbox("Building", list(pres_tree))
                 cats = pres_tree[bldg]
@@ -142,15 +133,11 @@ with tab_proc:
                             }
                             fill_workbook(tmp_xls, tmp_xls, items, meta)
                             st.success("Excel ready!")
-                            st.download_button(
-                                "⬇ Download", tmp_xls.read_bytes(), "filled_template.xlsx"
-                            )
+                            st.download_button("⬇ Download Excel", tmp_xls.read_bytes(), "filled_template.xlsx")
 
-# ═══════════════════════ 2. Preset Manager ════════════════════════════════════
+# ════════════════════════ Preset Manager Tab ════════════════════════
 with tab_mgr:
-    st.subheader("Projects")
-
-    # ── add project
+    st.subheader("📁 Projects")
     new_proj = st.text_input("New project name")
     if st.button("Add Project") and new_proj:
         if new_proj in presets["projects"]:
@@ -158,87 +145,114 @@ with tab_mgr:
         else:
             presets["projects"][new_proj] = {"personnel": [], "presets": {}}
             save_presets(presets)
-            st.success("Project added."); st.rerun()
+            st.success("Project added.")
+            st.rerun()
 
     if not presets["projects"]:
         st.stop()
 
-    proj = st.selectbox("Manage project", list(presets["projects"]), key="sel_proj")
-
-    # ── rename / delete project
-    colA, colB = st.columns(2)
-    with colA:
-        new_name = st.text_input("Rename", value=proj, key="rename_proj")
-        if st.button("✏ Rename"):
-            if new_name and new_name != proj:
-                presets["projects"][new_name] = presets["projects"].pop(proj)
-                save_presets(presets); st.success("Renamed."); st.rerun()
-    with colB:
-        if st.button("🗑 Delete Project"):
-            presets["projects"].pop(proj)
-            save_presets(presets); st.success("Deleted."); st.rerun()
-
+    proj = st.selectbox("Manage Project", list(presets["projects"]))
     proj_data = presets["projects"][proj]
 
-    # ── personnel
-    st.markdown("### Personnel")
-    add_person = st.text_input("Add person")
-    if st.button("Add Person") and add_person:
-        if add_person not in proj_data["personnel"]:
-            proj_data["personnel"].append(add_person)
-            save_presets(presets); st.rerun()
+    # Project rename/delete
+    proj_flags = st.session_state.setdefault("proj_edit_flags", {})
+    key = f"proj_{proj}"
+    col1, col2 = st.columns([4, 1])
+    if proj_flags.get(key, False):
+        new_name = col1.text_input("Rename Project", value=proj, key=f"rename_input_{proj}")
+        if col2.button("💾 Save", key=f"proj_save_{proj}"):
+            if new_name and new_name != proj:
+                presets["projects"][new_name] = presets["projects"].pop(proj)
+                save_presets(presets)
+                proj_flags.pop(key)
+                st.success("Renamed.")
+                st.rerun()
+    else:
+        col1.markdown(f"### 📁 Project: `{proj}`")
+        if col2.button("✏ Rename", key=f"proj_edit_{proj}"):
+            proj_flags[key] = True
+            st.rerun()
+    if st.button("🗑 Delete Project"):
+        presets["projects"].pop(proj)
+        save_presets(presets)
+        st.success("Project deleted.")
+        st.rerun()
 
-    for idx, p in enumerate(proj_data["personnel"]):
-        c1, c2, c3 = st.columns([3, 1, 1])
-        new_val = c1.text_input(f"pers_{idx}", value=p, key=f"pers_{idx}")
-        if c2.button("💾", key=f"save_p_{idx}") and new_val != p:
-            proj_data["personnel"][idx] = new_val
-            save_presets(presets); st.rerun()
-        if c3.button("🗑", key=f"del_p_{idx}"):
-            proj_data["personnel"].pop(idx)
-            save_presets(presets); st.rerun()
+    # Personnel
+    st.markdown("### 👥 Personnel")
+    new_p = st.text_input("Add Person")
+    if st.button("Add Person") and new_p:
+        if new_p not in proj_data["personnel"]:
+            proj_data["personnel"].append(new_p)
+            save_presets(presets)
+            st.rerun()
 
-    st.markdown("---\n### Presets")
+    person_flags = st.session_state.setdefault("person_edit_flags", {})
+    for i, name in enumerate(proj_data["personnel"]):
+        pkey = f"{proj}_{i}"
+        col1, col2, col3 = st.columns([4, 1, 1])
+        if person_flags.get(pkey, False):
+            new_val = col1.text_input(f"Person {i+1}", value=name, key=f"pinput_{pkey}")
+            if col2.button("💾", key=f"psave_{pkey}"):
+                proj_data["personnel"][i] = new_val
+                person_flags[pkey] = False
+                save_presets(presets)
+                st.rerun()
+        else:
+            col1.markdown(f"**👤 Person {i+1}:** {name}")
+            if col2.button("✏", key=f"pedit_{pkey}"):
+                person_flags[pkey] = True
+                st.rerun()
+        if col3.button("🗑", key=f"pdel_{pkey}"):
+            proj_data["personnel"].pop(i)
+            save_presets(presets)
+            st.rerun()
 
-    # ── add preset form
-    with st.form("preset_form", clear_on_submit=True):
+    # Preset form
+    st.markdown("---\n### 🏗 Presets")
+    with st.form("add_preset", clear_on_submit=True):
         b = st.text_input("Building")
         c = st.text_input("Category")
         loc = st.text_input("Location")
         ph = st.text_input("Phone")
-        ct = st.text_input("Contact Name")
-        if st.form_submit_button("Save Preset"):
+        ct = st.text_input("Site Contact")
+        if st.form_submit_button("💾 Save Preset"):
             if all([b, c, loc, ph, ct]):
-                proj_data["presets"].setdefault(b, {})[c] = {"location": loc, "phone": ph, "contact": ct}
-                save_presets(presets); st.success("Preset saved."); st.rerun()
-            else:
-                st.warning("Fill all fields.")
+                proj_data["presets"].setdefault(b, {})[c] = {
+                    "location": loc,
+                    "phone": ph,
+                    "contact": ct,
+                }
+                save_presets(presets)
+                st.success("Preset added.")
+                st.rerun()
 
-    # ── edit / delete existing presets
-    edit_state = st.session_state.setdefault("edit_flags", {})
+    # Preset display & editing
+    edit_flags = st.session_state.setdefault("preset_edit", {})
     for bldg, cats in proj_data["presets"].items():
         st.markdown(f"#### 🏢 {bldg}")
         for cat, val in cats.items():
-            key = f"{bldg}__{cat}"
-            editing = edit_state.get(key, False)
-            cols = st.columns([3,3,3,1,1])
-            if editing:
-                val["location"] = cols[0].text_input("Location", value=val["location"], key=f"loc_{key}")
-                val["phone"]    = cols[1].text_input("Phone", value=val["phone"], key=f"ph_{key}")
-                val["contact"]  = cols[2].text_input("Contact", value=val["contact"], key=f"ct_{key}")
+            pkey = f"{bldg}_{cat}"
+            cols = st.columns([3, 3, 3, 1, 1])
+            if edit_flags.get(pkey, False):
+                val["location"] = cols[0].text_input("Location", val["location"], key=f"{pkey}_loc")
+                val["phone"]    = cols[1].text_input("Phone", val["phone"], key=f"{pkey}_ph")
+                val["contact"]  = cols[2].text_input("Contact", val["contact"], key=f"{pkey}_ct")
+                if cols[3].button("💾", key=f"save_{pkey}"):
+                    save_presets(presets)
+                    edit_flags[pkey] = False
+                    st.success("Saved.")
+                    st.rerun()
             else:
-                cols[0].markdown(f"**Location:** {val['location']}")
-                cols[1].markdown(f"**Phone:** {val['phone']}")
-                cols[2].markdown(f"**Contact:** {val['contact']}")
-
-            if not editing:
-                if cols[3].button("✏", key=f"edit_{key}"):
-                    edit_state[key] = True; st.rerun()
-            else:
-                if cols[3].button("💾", key=f"save_{key}"):
-                    save_presets(presets); edit_state[key] = False; st.rerun()
-
-            if cols[4].button("🗑", key=f"del_{key}"):
+                cols[0].markdown(f"📦 **{cat}**")
+                cols[1].markdown(f"📍 {val['location']}")
+                cols[2].markdown(f"📞 {val['phone']} | 👤 {val['contact']}")
+                if cols[3].button("✏", key=f"edit_{pkey}"):
+                    edit_flags[pkey] = True
+                    st.rerun()
+            if cols[4].button("🗑", key=f"del_{pkey}"):
                 cats.pop(cat)
-                if not cats: proj_data["presets"].pop(bldg)
-                save_presets(presets); st.rerun()
+                if not cats:
+                    proj_data["presets"].pop(bldg)
+                save_presets(presets)
+                st.rerun()
