@@ -41,7 +41,7 @@ def clean(t: str):
     return re.sub(r"\s{2,}", " ", t).strip(" :")
 
 def extract(lines):
-    out, i = 0, []
+    out, i = [], 0
     while i < len(lines):
         m = re.match(r"^(\d+)\s+(.*)", lines[i])
         if m:
@@ -161,6 +161,11 @@ with tab_preset:
                 proj_data["personnel"].append(person_to_add)
                 presets_save(presets); st.rerun()
 
+        person_to_remove = col2.selectbox("Remove person", proj_data["personnel"], key="remove_person")
+        if col2.button("Remove", key="btn_remove_person"):
+            proj_data["personnel"].remove(person_to_remove)
+            presets_save(presets); st.rerun()
+
         st.divider()
         st.markdown("### 🗑️ Delete a Preset")
         if proj_data["presets"]:
@@ -201,3 +206,24 @@ with tab_preset:
                     presets_save(presets)
                     st.success("Preset saved.")
                     st.rerun()
+
+        st.markdown("### ✏️ Edit Project Name")
+        new_proj_name = st.text_input("New name for project")
+        if st.button("Rename Project") and new_proj_name:
+            presets["projects"][new_proj_name] = presets["projects"].pop(proj)
+            presets_save(presets)
+            st.rerun()
+
+        st.markdown("### ✏️ Edit Existing Preset")
+        b_edit = st.selectbox("Building to Edit", list(proj_data["presets"].keys()), key="edit_b")
+        c_edit = st.selectbox("Category to Edit", list(proj_data["presets"][b_edit].keys()), key="edit_c")
+        edit_preset = proj_data["presets"][b_edit][c_edit]
+        with st.form("edit_form"):
+            loc_e = st.text_input("Site Location", value=edit_preset["location"])
+            ph_e = st.text_input("Phone", value=edit_preset["phone"])
+            ct_e = st.text_input("Site Contact Name", value=edit_preset["contact"])
+            if st.form_submit_button("Update Preset"):
+                edit_preset.update({"location": loc_e, "phone": ph_e, "contact": ct_e})
+                presets_save(presets)
+                st.success("Preset updated.")
+                st.rerun()
