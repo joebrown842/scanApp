@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-# PDF-to-Excel Shipping Sheet App
+# app.py – Full Streamlit App for PDF to Excel with Preset & Project Manager
+
 import json, re, datetime, tempfile
 from pathlib import Path
 import streamlit as st
@@ -9,7 +10,6 @@ import pdf2image
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side
 
-# ───── Data Setup ─────
 PRESET_PATH = Path("presets.json")
 BORDER = Border(*(Side(style="thin") for _ in range(4)))
 
@@ -25,10 +25,11 @@ def load_presets():
         PRESET_PATH.write_text(json.dumps(_default_struct(), indent=2))
         return _default_struct()
 
-def save_presets(data): PRESET_PATH.write_text(json.dumps(data, indent=2))
+def save_presets(data): 
+    PRESET_PATH.write_text(json.dumps(data, indent=2))
+
 presets = load_presets()
 
-# ───── OCR & Excel Helpers ─────
 def ocr_text(img: Image.Image, box):
     gray = img.crop(box).convert("L")
     bw = gray.point(lambda x: 0 if x < 180 else 255, "1")
@@ -45,6 +46,7 @@ def clean_line(t: str):
 
 def extract_items(lines):
     out, i = 0, 0
+    items = []
     while i < len(lines):
         m = re.match(r"^(\d+)\s+(.*)", lines[i])
         if m:
@@ -53,9 +55,9 @@ def extract_items(lines):
                 desc += " " + lines[i + 1]
                 i += 1
             if "LOT" in desc.upper() and "TYPE" in desc.upper():
-                out.append((clean_line(desc), qty))
+                items.append((clean_line(desc), qty))
         i += 1
-    return out
+    return items
 
 def fill_workbook(tmpl, out, items, meta):
     wb = load_workbook(tmpl)
@@ -68,7 +70,7 @@ def fill_workbook(tmpl, out, items, meta):
         "E7": meta["phone"],
     }
     for cell, val in header_map.items():
-        if not isinstance(ws[cell], type(ws["A1"]).MergedCell):
+        if not isinstance(ws[cell], type(ws["A1"]).__class__) or not isinstance(ws[cell], type(ws["A1"]).MergedCell):
             ws[cell].value = val
     r = ws.max_row + 1
     for desc, qty in items:
@@ -77,12 +79,11 @@ def fill_workbook(tmpl, out, items, meta):
         r += 1
     wb.save(out)
 
-# ───── Streamlit Setup ─────
 st.set_page_config(page_title="Shipping Sheet Loader", layout="wide")
 st.title("📑 PDF Shipping-Sheet ➜ Excel Loader")
 tab_proc, tab_mgr = st.tabs(["🚚 Process PDF", "🛠️ Preset Manager"])
 
-# ════════════════════════ Process Tab ════════════════════════
+# ────────────────────── Process Tab ──────────────────────
 with tab_proc:
     if not presets["projects"]:
         st.warning("Create a project first in the Preset Manager.")
@@ -122,7 +123,7 @@ with tab_proc:
                         else:
                             tmp_xls = Path(tempfile.mktemp(suffix=".xlsx"))
                             tmp_xls.write_bytes(xlsx.read())
-                            preset = pres_tree[bldg][cat]
+                            preset = cats[cat]
                             meta = {
                                 "project": proj,
                                 "location": preset["location"],
@@ -135,18 +136,25 @@ with tab_proc:
                             st.success("Excel ready!")
                             st.download_button("⬇ Download Excel", tmp_xls.read_bytes(), "filled_template.xlsx")
 
-# ════════════════════════ Preset Manager Tab ════════════════════════
+# ────────────────────── Manager Tab ──────────────────────
 with tab_mgr:
     st.subheader("📁 Projects")
-    new_proj = st.text_input("New project name")
-    if st.button("Add Project") and new_proj:
-        if new_proj in presets["projects"]:
-            st.warning("Project exists.")
-        else:
-            presets["projects"][new_proj] = {"personnel": [], "presets": {}}
-            save_presets(presets)
-            st.success("Project added.")
-            st.rerun()
+
+    # Add new project
+    if "new_proj_name" not in st.session_state:
+        st.session_state["new_proj_name"] = ""
+    st.session_state["new_proj_name"] = st.text_input("New project name", value=st.session_state["new_proj_name"])
+    if st.button("Add Project"):
+        name = st.session_state["new_proj_name"].strip()
+        if name:
+            if name in presets["projects"]:
+                st.warning("Project already exists.")
+            else:
+                presets["projects"][name] = {"personnel": [], "presets": {}}
+                save_presets(presets)
+                st.success("Project added.")
+                st.session_state["new_proj_name"] = ""
+                st.rerun()
 
     if not presets["projects"]:
         st.stop()
@@ -154,7 +162,6 @@ with tab_mgr:
     proj = st.selectbox("Manage Project", list(presets["projects"]))
     proj_data = presets["projects"][proj]
 
-    # Project rename/delete
     proj_flags = st.session_state.setdefault("proj_edit_flags", {})
     key = f"proj_{proj}"
     col1, col2 = st.columns([4, 1])
@@ -178,13 +185,18 @@ with tab_mgr:
         st.success("Project deleted.")
         st.rerun()
 
-    # Personnel
+    # Personnel Section
     st.markdown("### 👥 Personnel")
-    new_p = st.text_input("Add Person")
-    if st.button("Add Person") and new_p:
+    if "new_person" not in st.session_state:
+        st.session_state["new_person"] = ""
+    st.session_state["new_person"] = st.text_input("Add Person", value=st.session_state["new_person"])
+    if st.button("Add Person") and st.session_state["new_person"]:
+        new_p = st.session_state["new_person"].strip()
         if new_p not in proj_data["personnel"]:
             proj_data["personnel"].append(new_p)
             save_presets(presets)
+            st.success("Person added.")
+            st.session_state["new_person"] = ""
             st.rerun()
 
     person_flags = st.session_state.setdefault("person_edit_flags", {})
@@ -208,7 +220,7 @@ with tab_mgr:
             save_presets(presets)
             st.rerun()
 
-    # Preset form
+    # Presets Section
     st.markdown("---\n### 🏗 Presets")
     with st.form("add_preset", clear_on_submit=True):
         b = st.text_input("Building")
@@ -227,21 +239,25 @@ with tab_mgr:
                 st.success("Preset added.")
                 st.rerun()
 
-    # Preset display & editing
     edit_flags = st.session_state.setdefault("preset_edit", {})
     for bldg, cats in proj_data["presets"].items():
         st.markdown(f"#### 🏢 {bldg}")
-        for cat, val in cats.items():
+        for cat, val in list(cats.items()):
             pkey = f"{bldg}_{cat}"
-            cols = st.columns([3, 3, 3, 1, 1])
+            cols = st.columns([2, 2, 3, 1, 1])
             if edit_flags.get(pkey, False):
-                val["location"] = cols[0].text_input("Location", val["location"], key=f"{pkey}_loc")
-                val["phone"]    = cols[1].text_input("Phone", val["phone"], key=f"{pkey}_ph")
-                val["contact"]  = cols[2].text_input("Contact", val["contact"], key=f"{pkey}_ct")
+                new_bldg = cols[0].text_input("Building", bldg, key=f"edit_bldg_{pkey}")
+                new_cat = cols[1].text_input("Category", cat, key=f"edit_cat_{pkey}")
+                val["location"] = cols[2].text_input("Location", val["location"], key=f"{pkey}_loc")
+                val["phone"] = cols[0].text_input("Phone", val["phone"], key=f"{pkey}_ph")
+                val["contact"] = cols[1].text_input("Contact", val["contact"], key=f"{pkey}_ct")
                 if cols[3].button("💾", key=f"save_{pkey}"):
-                    save_presets(presets)
+                    cats.pop(cat)
+                    if new_bldg not in proj_data["presets"]:
+                        proj_data["presets"][new_bldg] = {}
+                    proj_data["presets"][new_bldg][new_cat] = val
                     edit_flags[pkey] = False
-                    st.success("Saved.")
+                    save_presets(presets)
                     st.rerun()
             else:
                 cols[0].markdown(f"📦 **{cat}**")
