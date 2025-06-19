@@ -6,7 +6,6 @@ from PIL import Image
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side
 
-# ──────────────── Preset storage ────────────────
 PRESET_PATH = Path("presets.json")
 BORDER = Border(top=Side(style="thin"), bottom=Side(style="thin"),
                 left=Side(style="thin"), right=Side(style="thin"))
@@ -32,7 +31,6 @@ def presets_save(d: dict):
 
 presets = presets_load()
 
-# ───────────── OCR / Excel helpers (unchanged) ─────────────
 def ocr_crop(pg: Image.Image, box):
     gray = pg.crop(box).convert("L")
     bw = gray.point(lambda x: 0 if x < 180 else 255, "1")
@@ -43,7 +41,7 @@ def clean(t: str):
     return re.sub(r"\s{2,}", " ", t).strip(" :")
 
 def extract(lines):
-    out, i = [], 0
+    out, i = 0, []
     while i < len(lines):
         m = re.match(r"^(\d+)\s+(.*)", lines[i])
         if m:
@@ -70,16 +68,14 @@ def fill_wb(template, out, items, meta):
         row += 1
     wb.save(out)
 
-# ──────────────── UI ────────────────
 st.set_page_config(page_title="PDF → Excel Loader", layout="wide")
-st.title("📑 PDF Shipping-Sheet → Excel Loader")
+st.title("📁 PDF Shipping-Sheet ➔ Excel Loader")
 
 tab_proc, tab_preset = st.tabs(["🚚 Process PDF", "🔧 Preset Manager"])
 
-# ╔═══════════ TAB: PROCESS PDF ═══════════╗
 with tab_proc:
     if not presets["projects"]:
-        st.info("No projects yet ➜ add one in *Preset Manager*")
+        st.info("No projects yet ➔ add one in *Preset Manager*")
     else:
         proj = st.selectbox("Project", sorted(presets["projects"]))
         people = presets["projects"][proj]["personnel"]
@@ -101,7 +97,7 @@ with tab_proc:
                     xls_upl = st.file_uploader("Excel template (.xlsx)", ["xlsx"])
 
                     if st.button("🚀 Run OCR & Populate") and pdf_upl and xls_upl:
-                        with st.spinner("OCR in progress…"):
+                        with st.spinner("OCR in progress..."):
                             tmp_pdf = Path(tempfile.mktemp(suffix=".pdf"))
                             tmp_pdf.write_bytes(pdf_upl.read())
                             pages = pdf2image.convert_from_path(tmp_pdf)
@@ -120,47 +116,42 @@ with tab_proc:
                                 tmp_xls.write_bytes(xls_upl.read())
 
                                 preset = presets["projects"][proj]["presets"][bldg][cat]
-                                meta = {"project": proj,
-                                        "location": preset["location"],
-                                        "phone": preset["phone"],
-                                        "site_contact": preset["contact"],
+                                meta = {"project": proj, "location": preset["location"],
+                                        "phone": preset["phone"], "site_contact": preset["contact"],
                                         "building": bldg, "category": cat}
                                 fill_wb(tmp_xls, tmp_xls, items, meta)
 
                                 st.success("Workbook ready")
-                                st.download_button("⬇️ Download file",
-                                                   tmp_xls.read_bytes(),
+                                st.download_button("⬇️ Download file", tmp_xls.read_bytes(),
                                                    "filled_template.xlsx",
-                          type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-# ╔═══════════ TAB: PRESET MANAGER ═══════════╗
 with tab_preset:
     st.subheader("📁 Projects")
-
-    # ── Add new project
     st.markdown("### ➕ Create New Project")
     new_proj = st.text_input("Project name", key="create_proj")
-    st.button("Add project",
-              on_click=lambda: (
-                  presets["projects"].setdefault(new_proj, {"personnel": [], "presets": {}}),
-                  presets_save(presets), st.rerun()
-              ) if new_proj and new_proj not in presets["projects"] else None)
+    if st.button("Add project"):
+        if not new_proj:
+            st.warning("Please enter a project name.")
+        elif new_proj in presets["projects"]:
+            st.warning("Project already exists.")
+        else:
+            presets["projects"][new_proj] = {"personnel": [], "presets": {}}
+            presets_save(presets)
+            st.success("✅ Project added.")
+            st.rerun()
 
     if presets["projects"]:
         st.divider()
-
-        # ── Select / delete project
-        proj = st.selectbox("Select project to manage", sorted(presets["projects"]))
+        proj = st.selectbox("Manage project", sorted(presets["projects"]))
         if st.button("🗑️ Delete Project"):
-            st.warning(f"Confirm delete project **{proj}**", icon="⚠️")
-            if st.button("Yes, delete", key="confirm_del_proj"):
+            if st.button("Confirm Delete", key="del_confirm"):
                 presets["projects"].pop(proj)
                 presets_save(presets)
                 st.rerun()
 
-        proj_data = presets["projects"].get(proj, {"personnel": [], "presets": {}})
+        proj_data = presets["projects"][proj]
 
-        # ── Personnel
         st.markdown("### 👤 Project Personnel")
         col1, col2 = st.columns([2, 1])
         col1.write(proj_data["personnel"] or "*None yet*")
@@ -171,8 +162,6 @@ with tab_preset:
                 presets_save(presets); st.rerun()
 
         st.divider()
-
-        # ── Delete preset selector
         st.markdown("### 🗑️ Delete a Preset")
         if proj_data["presets"]:
             b_sel = st.selectbox("Building", sorted(proj_data["presets"]), key="del_bldg")
@@ -186,20 +175,15 @@ with tab_preset:
             st.info("No presets yet.")
 
         st.divider()
-
-        # ── Existing presets table
-        st.markdown("### 🏗️ Existing Building / Category Presets")
+        st.markdown("### 🏧 Existing Building / Category Presets")
         rows = [[b, c, d["location"], d["phone"], d["contact"]]
                 for b, cats in proj_data["presets"].items()
                 for c, d in cats.items()]
         st.dataframe(rows, hide_index=True,
-                     column_config={0:"Building",1:"Category",
-                                    2:"Location",3:"Phone",4:"Site Contact"},
+                     column_config={0:"Building",1:"Category",2:"Location",3:"Phone",4:"Site Contact"},
                      use_container_width=True)
 
         st.divider()
-
-        # ── Add / update preset
         st.markdown("### ➕ Add or Update a Preset")
         with st.form("preset_form", clear_on_submit=True):
             b = st.text_input("Building")
@@ -215,5 +199,5 @@ with tab_preset:
                         "location": loc, "phone": ph, "contact": ct
                     }
                     presets_save(presets)
-                    st.success("Preset saved.")  # form clears automatically
+                    st.success("Preset saved.")
                     st.rerun()
