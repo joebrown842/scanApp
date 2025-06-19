@@ -107,24 +107,23 @@ with tab_proc:
 with tab_mgr:
     st.subheader("📁 Projects")
 
-    # New project (auto-clear)
     proj_input = st.text_input("New Project")
     if st.button("Add Project"):
         name = proj_input.strip()
         if name and name not in presets["projects"]:
             presets["projects"][name]={"personnel":[],"presets":{}}
             save_presets(presets)
-            st.success("Project added."); st.experimental_rerun()
+            st.success("Project added.")
+            st.rerun()
 
     if not presets["projects"]: st.stop()
     proj = st.selectbox("Select Project", list(presets["projects"]))
     pdata=presets["projects"][proj]
 
-    # New person (auto-clear)
     pers_input = st.text_input("Add Person")
     if st.button("Add Person") and pers_input.strip():
         if pers_input not in pdata["personnel"]:
-            pdata["personnel"].append(pers_input.strip()); save_presets(presets); st.success("Person added."); st.experimental_rerun()
+            pdata["personnel"].append(pers_input.strip()); save_presets(presets); st.success("Person added."); st.rerun()
 
     st.markdown("### Personnel")
     for i,p in enumerate(pdata["personnel"]):
@@ -135,12 +134,12 @@ with tab_mgr:
         b = st.text_input("Building")
         c = st.text_input("Category")
         loc = st.text_input("Location")
-        ct  = st.text_input("Site Contact")   # ← Contact first
+        ct  = st.text_input("Site Contact")
         ph  = st.text_input("Phone")
         if st.form_submit_button("💾 Save"):
             if all([b,c,loc,ph,ct]):
                 pdata["presets"].setdefault(b,{})[c]={"location":loc,"phone":ph,"contact":ct}
-                save_presets(presets); st.success("Preset saved."); st.experimental_rerun()
+                save_presets(presets); st.success("Preset saved."); st.rerun()
 
     st.markdown("---\n### Existing Presets")
     for b,cats in pdata["presets"].items():
