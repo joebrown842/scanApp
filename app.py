@@ -172,12 +172,15 @@ with tab_mgr:
     st.markdown("### 👥 Personnel")
     if "new_person" not in st.session_state:
         st.session_state["new_person_input"] = ""
-    pers_input = st.text_input("Add Person", key="new_person_input")
-    if st.button("Add Person") and pers_input.strip():
-        new_p = pers_input.strip()
-        if new_p not in proj_data["personnel"]:
-            proj_data["personnel"].append(new_p)
-            save_presets(presets)
+pers_input = st.text_input("Add Person", key="new_person_input")
+if st.button("Add Person") and pers_input.strip():
+    new_p = pers_input.strip()
+    if new_p not in proj_data["personnel"]:
+        proj_data["personnel"].append(new_p)
+        save_presets(presets)
+        st.success("Person added.")
+        st.session_state["new_person_input"] = ""
+        st.rerun()
             st.success("Person added.")
             st.session_state["new_person_input"] = ""
             st.rerun()
