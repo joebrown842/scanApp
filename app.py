@@ -69,127 +69,95 @@ def fill_wb(template, out, items, meta):
     wb.save(out)
 
 st.set_page_config(page_title="PDF → Excel Loader", layout="wide")
-st.title("📁 PDF Shipping-Sheet ➔ Excel Loader")
+st.title("📁 PDF Shipping-Sheet → Excel Loader")
 
-tab_proc, tab_preset = st.tabs(["🚚 Process PDF", "🔧 Preset Manager"])
+preset_data = presets_load()
+
+with st.sidebar:
+    st.header("Project Selection")
+    all_projects = sorted(preset_data["projects"].keys())
+    selected_project = st.selectbox("Select a Project", all_projects if all_projects else ["No projects"],
+                                     key="active_project")
+    if selected_project != "No projects":
+        proj_info = preset_data["projects"][selected_project]
+        selected_person = st.selectbox("Personnel", proj_info.get("personnel", []), key="active_person")
+        selected_building = st.selectbox("Building", sorted(proj_info.get("presets", {}).keys()), key="active_building")
+        selected_category = st.selectbox("Category", sorted(proj_info["presets"].get(selected_building, {}).keys()),
+                                         key="active_category")
+
+
+tab_proc, tab_preset = st.tabs(["📄 Process PDF", "🛠️ Preset Manager"])
 
 with tab_proc:
-    if not presets["projects"]:
-        st.info("No projects yet ➔ add one in *Preset Manager*")
+    if not all_projects:
+        st.info("No projects yet → add one in Preset Manager")
     else:
-        proj = st.selectbox("Project", sorted(presets["projects"]))
-        people = presets["projects"][proj]["personnel"]
-        if not people:
-            st.warning("Add personnel first in Preset Manager")
-        else:
-            user = st.selectbox("Report Prepared By", people)
-            bldgs = sorted(presets["projects"][proj]["presets"])
-            if not bldgs:
-                st.warning("Add a building preset first")
-            else:
-                bldg = st.selectbox("Building", bldgs)
-                cats = sorted(presets["projects"][proj]["presets"][bldg])
-                if not cats:
-                    st.warning("Add a category under this building")
+        preset = preset_data["projects"][selected_project]["presets"][selected_building][selected_category]
+        st.subheader("Upload Files")
+        pdf_upl = st.file_uploader("Upload scanned PDF", ["pdf"])
+        xls_upl = st.file_uploader("Upload Excel template (.xlsx)", ["xlsx"])
+
+        if st.button("🚀 Run OCR & Populate") and pdf_upl and xls_upl:
+            with st.spinner("Running OCR and populating Excel..."):
+                tmp_pdf = Path(tempfile.mktemp(suffix=".pdf"))
+                tmp_pdf.write_bytes(pdf_upl.read())
+                pages = pdf2image.convert_from_path(tmp_pdf)
+
+                lines = []
+                for pg in pages:
+                    w, h = pg.size
+                    lines += [ln.strip() for ln in
+                              ocr_crop(pg, (150, int(h*0.25), w, int(h*0.90))).split("\n")
+                              if ln.strip()]
+                items = extract(lines)
+
+                if not items:
+                    st.error("No LOT/TYPE rows detected.")
                 else:
-                    cat = st.selectbox("Category", cats)
-                    pdf_upl = st.file_uploader("Scanned PDF", ["pdf"])
-                    xls_upl = st.file_uploader("Excel template (.xlsx)", ["xlsx"])
-
-                    if st.button("🚀 Run OCR & Populate") and pdf_upl and xls_upl:
-                        with st.spinner("OCR in progress..."):
-                            tmp_pdf = Path(tempfile.mktemp(suffix=".pdf"))
-                            tmp_pdf.write_bytes(pdf_upl.read())
-                            pages = pdf2image.convert_from_path(tmp_pdf)
-
-                            lines = []
-                            for pg in pages:
-                                w, h = pg.size
-                                lines += [ln.strip() for ln in
-                                          ocr_crop(pg, (150, int(h*0.25), w, int(h*0.90))).split("\n")
-                                          if ln.strip()]
-                            items = extract(lines)
-                            if not items:
-                                st.error("No LOT/TYPE rows detected.")
-                            else:
-                                tmp_xls = Path(tempfile.mktemp(suffix=".xlsx"))
-                                tmp_xls.write_bytes(xls_upl.read())
-
-                                preset = presets["projects"][proj]["presets"][bldg][cat]
-                                meta = {"project": proj, "location": preset["location"],
-                                        "phone": preset["phone"], "site_contact": preset["contact"],
-                                        "building": bldg, "category": cat}
-                                fill_wb(tmp_xls, tmp_xls, items, meta)
-
-                                st.success("Workbook ready")
-                                st.download_button("⬇️ Download file", tmp_xls.read_bytes(),
-                                                   "filled_template.xlsx",
-                type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    tmp_xls = Path(tempfile.mktemp(suffix=".xlsx"))
+                    tmp_xls.write_bytes(xls_upl.read())
+                    meta = {
+                        "project": selected_project,
+                        "location": preset["location"],
+                        "phone": preset["phone"],
+                        "site_contact": preset["contact"],
+                        "building": selected_building,
+                        "category": selected_category
+                    }
+                    fill_wb(tmp_xls, tmp_xls, items, meta)
+                    st.success("Workbook populated.")
+                    st.download_button("⬇️ Download file", tmp_xls.read_bytes(),
+                                       "filled_template.xlsx",
+                                       type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 with tab_preset:
-    st.subheader("📁 Projects")
-    st.markdown("### ➕ Create New Project")
-    new_proj = st.text_input("Project name", key="create_proj")
-    if st.button("Add project"):
-        if not new_proj:
-            st.warning("Please enter a project name.")
-        elif new_proj in presets["projects"]:
-            st.warning("Project already exists.")
-        else:
-            presets["projects"][new_proj] = {"personnel": [], "presets": {}}
-            presets_save(presets)
-            st.success("✅ Project added.")
+    st.subheader("📁 Manage Projects & Presets")
+
+    new_proj = st.text_input("Create New Project")
+    if st.button("Add Project"):
+        if new_proj and new_proj not in preset_data["projects"]:
+            preset_data["projects"][new_proj] = {"personnel": [], "presets": {}}
+            presets_save(preset_data)
+            st.success("Project added.")
             st.rerun()
 
-    if presets["projects"]:
-        st.divider()
-        proj = st.selectbox("Manage project", sorted(presets["projects"]))
-        if st.button("🗑️ Delete Project"):
-            if st.button("Confirm Delete", key="del_confirm"):
-                presets["projects"].pop(proj)
-                presets_save(presets)
-                st.rerun()
-
-        proj_data = presets["projects"][proj]
-
-        st.markdown("### 👤 Project Personnel")
+    st.divider()
+    if selected_project != "No projects":
+        st.markdown(f"### 👤 Personnel for `{selected_project}`")
         col1, col2 = st.columns([2, 1])
-        col1.write(proj_data["personnel"] or "*None yet*")
-        person_to_add = col2.text_input("Add person", key="add_person")
-        if col2.button("Add", key="btn_add_person") and person_to_add:
-            if person_to_add not in proj_data["personnel"]:
-                proj_data["personnel"].append(person_to_add)
-                presets_save(presets); st.rerun()
+        col1.write(preset_data["projects"][selected_project]["personnel"] or "*None yet*")
+        person_to_add = col2.text_input("Add person")
+        if col2.button("Add Person") and person_to_add:
+            if person_to_add not in preset_data["projects"][selected_project]["personnel"]:
+                preset_data["projects"][selected_project]["personnel"].append(person_to_add)
+                presets_save(preset_data); st.rerun()
 
-        person_to_remove = col2.selectbox("Remove person", proj_data["personnel"], key="remove_person")
-        if col2.button("Remove", key="btn_remove_person"):
-            proj_data["personnel"].remove(person_to_remove)
-            presets_save(presets); st.rerun()
+        person_to_remove = col2.selectbox("Remove person", preset_data["projects"][selected_project]["personnel"])
+        if col2.button("Remove Person"):
+            preset_data["projects"][selected_project]["personnel"].remove(person_to_remove)
+            presets_save(preset_data); st.rerun()
 
-        st.divider()
-        st.markdown("### 🗑️ Delete a Preset")
-        if proj_data["presets"]:
-            b_sel = st.selectbox("Building", sorted(proj_data["presets"]), key="del_bldg")
-            c_sel = st.selectbox("Category", sorted(proj_data["presets"][b_sel]), key="del_cat")
-            if st.button("Delete Preset"):
-                proj_data["presets"][b_sel].pop(c_sel, None)
-                if not proj_data["presets"][b_sel]:
-                    proj_data["presets"].pop(b_sel)
-                presets_save(presets); st.rerun()
-        else:
-            st.info("No presets yet.")
-
-        st.divider()
-        st.markdown("### 🏧 Existing Building / Category Presets")
-        rows = [[b, c, d["location"], d["phone"], d["contact"]]
-                for b, cats in proj_data["presets"].items()
-                for c, d in cats.items()]
-        st.dataframe(rows, hide_index=True,
-                     column_config={0:"Building",1:"Category",2:"Location",3:"Phone",4:"Site Contact"},
-                     use_container_width=True)
-
-        st.divider()
-        st.markdown("### ➕ Add or Update a Preset")
+        st.markdown(f"### 🏢 Add/Edit Preset for `{selected_project}`")
         with st.form("preset_form", clear_on_submit=True):
             b = st.text_input("Building")
             c = st.text_input("Category")
@@ -200,30 +168,37 @@ with tab_preset:
                 if not all([b, c, loc, ph, ct]):
                     st.warning("Fill all fields.")
                 else:
-                    proj_data["presets"].setdefault(b, {})[c] = {
+                    preset_data["projects"][selected_project]["presets"].setdefault(b, {})[c] = {
                         "location": loc, "phone": ph, "contact": ct
                     }
-                    presets_save(presets)
+                    presets_save(preset_data)
                     st.success("Preset saved.")
                     st.rerun()
 
-        st.markdown("### ✏️ Edit Project Name")
-        new_proj_name = st.text_input("New name for project")
-        if st.button("Rename Project") and new_proj_name:
-            presets["projects"][new_proj_name] = presets["projects"].pop(proj)
-            presets_save(presets)
+        st.markdown("### 🗑️ Delete Project")
+        if st.button("Delete Selected Project"):
+            preset_data["projects"].pop(selected_project)
+            presets_save(preset_data)
+            st.success("Project deleted.")
             st.rerun()
 
-        st.markdown("### ✏️ Edit Existing Preset")
-        b_edit = st.selectbox("Building to Edit", list(proj_data["presets"].keys()), key="edit_b")
-        c_edit = st.selectbox("Category to Edit", list(proj_data["presets"][b_edit].keys()), key="edit_c")
-        edit_preset = proj_data["presets"][b_edit][c_edit]
+        st.markdown("### 🗑️ Delete Preset")
+        if st.button("Delete Selected Preset"):
+            preset_data["projects"][selected_project]["presets"][selected_building].pop(selected_category)
+            if not preset_data["projects"][selected_project]["presets"][selected_building]:
+                preset_data["projects"][selected_project]["presets"].pop(selected_building)
+            presets_save(preset_data)
+            st.success("Preset deleted.")
+            st.rerun()
+
+        st.markdown("### ✏️ Edit Preset")
+        curr = preset_data["projects"][selected_project]["presets"][selected_building][selected_category]
         with st.form("edit_form"):
-            loc_e = st.text_input("Site Location", value=edit_preset["location"])
-            ph_e = st.text_input("Phone", value=edit_preset["phone"])
-            ct_e = st.text_input("Site Contact Name", value=edit_preset["contact"])
+            loc = st.text_input("Site Location", value=curr["location"])
+            ph = st.text_input("Phone", value=curr["phone"])
+            ct = st.text_input("Site Contact Name", value=curr["contact"])
             if st.form_submit_button("Update Preset"):
-                edit_preset.update({"location": loc_e, "phone": ph_e, "contact": ct_e})
-                presets_save(presets)
+                curr.update({"location": loc, "phone": ph, "contact": ct})
+                presets_save(preset_data)
                 st.success("Preset updated.")
                 st.rerun()
