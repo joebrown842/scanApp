@@ -181,9 +181,7 @@ if st.button("Add Person") and pers_input.strip():
         st.success("Person added.")
         st.session_state["new_person_input"] = ""
         st.rerun()
-            st.success("Person added.")
-            st.session_state["new_person_input"] = ""
-            st.rerun()
+        st.rerun()
 
     st.markdown("---\n### 🏗 Presets")
     with st.form("add_preset", clear_on_submit=True):
