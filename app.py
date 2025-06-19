@@ -141,7 +141,7 @@ with tab_mgr:
 
     if "new_proj_name" not in st.session_state:
         st.session_state["new_proj_name"] = ""
-    st.session_state["new_proj_name"] = st.text_input("New project name", value=st.session_state["new_proj_name"])
+    st.session_state["new_proj_name"] = st.text_input("New project name", key="new_project_input", value=st.session_state["new_proj_name"])
     if st.button("Add Project"):
         name = st.session_state["new_proj_name"].strip()
         if name:
@@ -159,11 +159,20 @@ with tab_mgr:
 
     proj = st.selectbox("Manage Project", list(presets["projects"]))
     proj_data = presets["projects"][proj]
+    st.markdown('### 👥 Personnel')
+    for i, person in enumerate(proj_data['personnel']):
+        col1, col2 = st.columns([5, 1])
+        col1.markdown(f'- 👤 {person}')
+        if col2.button("🗑️", key=f'del_pers_{i}'):
+            proj_data['personnel'].remove(person)
+            save_presets(presets)
+            st.success('Person deleted.')
+            st.rerun()
 
     st.markdown("### 👥 Personnel")
     if "new_person" not in st.session_state:
         st.session_state["new_person"] = ""
-    st.session_state["new_person"] = st.text_input("Add Person", value=st.session_state["new_person"])
+    st.session_state["new_person"] = st.text_input("Add Person", key="new_person_input", value=st.session_state["new_person"])
     if st.button("Add Person") and st.session_state["new_person"]:
         new_p = st.session_state["new_person"].strip()
         if new_p not in proj_data["personnel"]:
