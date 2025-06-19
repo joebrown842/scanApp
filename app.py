@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# app.py – Full Streamlit App for PDF to Excel with Preset & Project Manager
+# app.py – Streamlit App for PDF-to-Excel Shipping Sheet with Project & Preset Management
 
 import json, re, datetime, tempfile
 from pathlib import Path
@@ -83,7 +83,6 @@ st.set_page_config(page_title="Shipping Sheet Loader", layout="wide")
 st.title("📑 PDF Shipping-Sheet ➜ Excel Loader")
 tab_proc, tab_mgr = st.tabs(["🚚 Process PDF", "🛠️ Preset Manager"])
 
-# ────────────────────── Process Tab ──────────────────────
 with tab_proc:
     if not presets["projects"]:
         st.warning("Create a project first in the Preset Manager.")
@@ -136,11 +135,9 @@ with tab_proc:
                             st.success("Excel ready!")
                             st.download_button("⬇ Download Excel", tmp_xls.read_bytes(), "filled_template.xlsx")
 
-# ────────────────────── Manager Tab ──────────────────────
 with tab_mgr:
     st.subheader("📁 Projects")
 
-    # Add new project
     if "new_proj_name" not in st.session_state:
         st.session_state["new_proj_name"] = ""
     st.session_state["new_proj_name"] = st.text_input("New project name", value=st.session_state["new_proj_name"])
@@ -162,30 +159,6 @@ with tab_mgr:
     proj = st.selectbox("Manage Project", list(presets["projects"]))
     proj_data = presets["projects"][proj]
 
-    proj_flags = st.session_state.setdefault("proj_edit_flags", {})
-    key = f"proj_{proj}"
-    col1, col2 = st.columns([4, 1])
-    if proj_flags.get(key, False):
-        new_name = col1.text_input("Rename Project", value=proj, key=f"rename_input_{proj}")
-        if col2.button("💾 Save", key=f"proj_save_{proj}"):
-            if new_name and new_name != proj:
-                presets["projects"][new_name] = presets["projects"].pop(proj)
-                save_presets(presets)
-                proj_flags.pop(key)
-                st.success("Renamed.")
-                st.rerun()
-    else:
-        col1.markdown(f"### 📁 Project: `{proj}`")
-        if col2.button("✏ Rename", key=f"proj_edit_{proj}"):
-            proj_flags[key] = True
-            st.rerun()
-    if st.button("🗑 Delete Project"):
-        presets["projects"].pop(proj)
-        save_presets(presets)
-        st.success("Project deleted.")
-        st.rerun()
-
-    # Personnel Section
     st.markdown("### 👥 Personnel")
     if "new_person" not in st.session_state:
         st.session_state["new_person"] = ""
@@ -199,35 +172,13 @@ with tab_mgr:
             st.session_state["new_person"] = ""
             st.rerun()
 
-    person_flags = st.session_state.setdefault("person_edit_flags", {})
-    for i, name in enumerate(proj_data["personnel"]):
-        pkey = f"{proj}_{i}"
-        col1, col2, col3 = st.columns([4, 1, 1])
-        if person_flags.get(pkey, False):
-            new_val = col1.text_input(f"Person {i+1}", value=name, key=f"pinput_{pkey}")
-            if col2.button("💾", key=f"psave_{pkey}"):
-                proj_data["personnel"][i] = new_val
-                person_flags[pkey] = False
-                save_presets(presets)
-                st.rerun()
-        else:
-            col1.markdown(f"**👤 Person {i+1}:** {name}")
-            if col2.button("✏", key=f"pedit_{pkey}"):
-                person_flags[pkey] = True
-                st.rerun()
-        if col3.button("🗑", key=f"pdel_{pkey}"):
-            proj_data["personnel"].pop(i)
-            save_presets(presets)
-            st.rerun()
-
-    # Presets Section
     st.markdown("---\n### 🏗 Presets")
     with st.form("add_preset", clear_on_submit=True):
         b = st.text_input("Building")
         c = st.text_input("Category")
         loc = st.text_input("Location")
-        ph = st.text_input("Phone")
         ct = st.text_input("Site Contact")
+        ph = st.text_input("Phone")
         if st.form_submit_button("💾 Save Preset"):
             if all([b, c, loc, ph, ct]):
                 proj_data["presets"].setdefault(b, {})[c] = {
@@ -239,36 +190,10 @@ with tab_mgr:
                 st.success("Preset added.")
                 st.rerun()
 
-    edit_flags = st.session_state.setdefault("preset_edit", {})
     for bldg, cats in proj_data["presets"].items():
         st.markdown(f"#### 🏢 {bldg}")
         for cat, val in list(cats.items()):
-            pkey = f"{bldg}_{cat}"
             cols = st.columns([2, 2, 3, 1, 1])
-            if edit_flags.get(pkey, False):
-                new_bldg = cols[0].text_input("Building", bldg, key=f"edit_bldg_{pkey}")
-                new_cat = cols[1].text_input("Category", cat, key=f"edit_cat_{pkey}")
-                val["location"] = cols[2].text_input("Location", val["location"], key=f"{pkey}_loc")
-                val["phone"] = cols[0].text_input("Phone", val["phone"], key=f"{pkey}_ph")
-                val["contact"] = cols[1].text_input("Contact", val["contact"], key=f"{pkey}_ct")
-                if cols[3].button("💾", key=f"save_{pkey}"):
-                    cats.pop(cat)
-                    if new_bldg not in proj_data["presets"]:
-                        proj_data["presets"][new_bldg] = {}
-                    proj_data["presets"][new_bldg][new_cat] = val
-                    edit_flags[pkey] = False
-                    save_presets(presets)
-                    st.rerun()
-            else:
-                cols[0].markdown(f"📦 **{cat}**")
-                cols[1].markdown(f"📍 {val['location']}")
-                cols[2].markdown(f"📞 {val['phone']} | 👤 {val['contact']}")
-                if cols[3].button("✏", key=f"edit_{pkey}"):
-                    edit_flags[pkey] = True
-                    st.rerun()
-            if cols[4].button("🗑", key=f"del_{pkey}"):
-                cats.pop(cat)
-                if not cats:
-                    proj_data["presets"].pop(bldg)
-                save_presets(presets)
-                st.rerun()
+            cols[0].markdown(f"📦 **{cat}**")
+            cols[1].markdown(f"📍 {val['location']}")
+            cols[2].markdown(f"👤 {val['contact']} | 📞 {val['phone']}")
